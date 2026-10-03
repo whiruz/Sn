@@ -17,7 +17,7 @@ local function mk(class, props, parent)
 end
 
 -- ===== НАСТРОЙКИ =====
-local S = {dim = 40, walk = 60, jump = 120, fly = 60, fov = 100, gravity = 196}
+local S = {dim = 40, walk = 60, jump = 120, fly = 60, fov = 100, gravity = 196, time = 14, fog = 500, emSpeed = 100}
 local F = {}
 local state = {}
 
@@ -95,6 +95,93 @@ function F.fullbright(on)
     elseif oldLight then
         Lighting.Brightness, Lighting.ClockTime, Lighting.Ambient = unpack(oldLight)
     end
+end
+
+-- ===== АТМОСФЕРА =====
+local orig = {
+    Lighting.ClockTime, Lighting.Ambient, Lighting.OutdoorAmbient,
+    Lighting.ColorShift_Top, Lighting.FogEnd, Lighting.FogStart, Lighting.FogColor,
+}
+local atmOn = false -- включается после сборки меню, чтобы ползунки не меняли мир при запуске
+
+function F.atmReset()
+    Lighting.ClockTime, Lighting.Ambient, Lighting.OutdoorAmbient,
+    Lighting.ColorShift_Top, Lighting.FogEnd, Lighting.FogStart, Lighting.FogColor = unpack(orig)
+end
+
+local rbConn
+function F.rainbow(on)
+    if rbConn then rbConn:Disconnect(); rbConn = nil end
+    if on then
+        rbConn = RunService.Heartbeat:Connect(function()
+            local c = Color3.fromHSV((tick() * 0.1) % 1, 0.6, 1)
+            Lighting.Ambient = c
+            Lighting.OutdoorAmbient = c
+            Lighting.ColorShift_Top = c
+            Lighting.FogColor = c
+        end)
+    else
+        Lighting.Ambient, Lighting.OutdoorAmbient = orig[2], orig[3]
+        Lighting.ColorShift_Top, Lighting.FogColor = orig[4], orig[7]
+    end
+end
+
+-- {название, время, Ambient, ColorShift, цвет тумана, дальность тумана}
+local PRESETS = {
+    {"Закат", 18, Color3.fromRGB(255, 140, 90), Color3.fromRGB(255, 120, 60), Color3.fromRGB(255, 150, 100), 1500},
+    {"Ночь", 0, Color3.fromRGB(40, 40, 80), Color3.fromRGB(20, 20, 60), Color3.fromRGB(10, 10, 30), 1000},
+    {"Розовый рассвет", 6, Color3.fromRGB(255, 170, 200), Color3.fromRGB(255, 150, 190), Color3.fromRGB(255, 190, 210), 1500},
+    {"Хоррор", 0, Color3.fromRGB(60, 10, 10), Color3.fromRGB(40, 0, 0), Color3.fromRGB(30, 0, 0), 150},
+    {"Неон", 0, Color3.fromRGB(120, 40, 255), Color3.fromRGB(0, 255, 200), Color3.fromRGB(40, 0, 80), 800},
+}
+
+function F.preset(p)
+    Lighting.ClockTime = p[2]
+    Lighting.Ambient = p[3]
+    Lighting.OutdoorAmbient = p[3]
+    Lighting.ColorShift_Top = p[4]
+    Lighting.FogColor = p[5]
+    Lighting.FogStart = 0
+    Lighting.FogEnd = p[6]
+end
+
+-- ===== ЭМОЦИИ =====
+-- {название, R15, R6}
+local EMOTES = {
+    {"Танец 1", "507771019", "182435998"},
+    {"Танец 2", "507776043", "182436842"},
+    {"Танец 3", "507777268", "182436935"},
+    {"Махать рукой", "507770239", "128777973"},
+    {"Указать", "507770453", "128853357"},
+    {"Радость", "507770677", "129423030"},
+    {"Смех", "507770818", "129423131"},
+    {"Салют", "3360689775", "3360692915"},
+}
+
+local curTrack, emoConn
+function F.stopEmote()
+    if emoConn then emoConn:Disconnect(); emoConn = nil end
+    if curTrack then pcall(function() curTrack:Stop() end); curTrack = nil end
+end
+
+function F.emote(e)
+    F.stopEmote()
+    local h = hum()
+    if not h then return end
+    local id = h.RigType == Enum.HumanoidRigType.R6 and e[3] or e[2]
+    local animator = h:FindFirstChildOfClass("Animator") or mk("Animator", {}, h)
+    local anim = mk("Animation", {AnimationId = "rbxassetid://" .. id})
+    local ok, tr = pcall(function() return animator:LoadAnimation(anim) end)
+    if not ok or not tr then return end
+    tr.Priority = Enum.AnimationPriority.Action
+    tr.Looped = true
+    tr:Play()
+    tr:AdjustSpeed(S.emSpeed / 100)
+    curTrack = tr
+    emoConn = RunService.Heartbeat:Connect(function()
+        local hh = hum()
+        if hh and hh.MoveDirection.Magnitude > 0.1 then F.stopEmote() end
+    end)
 end
 
 -- ===== СКИНЫ =====
@@ -496,6 +583,7 @@ function F.setSkin(name)
 end
 
 lp.CharacterAdded:Connect(function()
+    curTrack = nil
     task.wait(1)
     if state.speed then F.speed(true) end
     if state.jump then F.jump(true) end
@@ -847,6 +935,39 @@ for _, nm in ipairs(skinNames) do
 end
 button(skins, "Снять скин", RED, function() F.setSkin(nil); refresh() end)
 
+-- ===== Эмоции =====
+local emo = newPage("Эмоции")
+for _, e in ipairs(EMOTES) do
+    button(emo, e[1], nil, function() F.emote(e) end)
+end
+slider(emo, "Скорость анимации %", 20, 300, "emSpeed", function(v)
+    if curTrack then pcall(function() curTrack:AdjustSpeed(v / 100) end) end
+end)
+button(emo, "Остановить эмоцию", RED, function() F.stopEmote() end)
+
+-- ===== Атмосфера =====
+local atm = newPage("Атмосфера")
+section(atm, "Время и туман")
+slider(atm, "Время суток (0-24)", 0, 24, "time", function(v)
+    if atmOn then Lighting.ClockTime = v end
+end)
+slider(atm, "Дальность тумана", 50, 3000, "fog", function(v)
+    if atmOn then Lighting.FogStart = 0; Lighting.FogEnd = v end
+end)
+section(atm, "Пресеты")
+for _, p in ipairs(PRESETS) do
+    button(atm, p[1], nil, function() F.preset(p) end)
+end
+section(atm, "Цвет неба")
+swatches(atm, function(p)
+    Lighting.Ambient = p.active
+    Lighting.OutdoorAmbient = p.active
+    Lighting.ColorShift_Top = p.g1
+    Lighting.FogColor = p.accent
+end)
+toggle(atm, "rainbow", "Радужное небо", F.rainbow)
+button(atm, "Сбросить атмосферу", RED, function() F.atmReset() end)
+
 -- ===== Настройки =====
 local set = newPage("Настройки")
 section(set, "Цвет меню")
@@ -919,11 +1040,15 @@ slider(set, "Прозрачность обоев", 0, 90, "dim", function(v) wal
 
 button(set, "Выгрузить скрипт", RED, function()
     F.setSkin(nil)
+    F.stopEmote()
+    F.rainbow(false)
+    F.atmReset()
     F.fly(false); F.noclip(false); F.speed(false); F.jump(false); F.infJump(false)
     F.fov(false); F.gravity(false); F.esp(false); F.fullbright(false)
     glowConn:Disconnect()
     gui:Destroy()
 end)
 
+atmOn = true
 showPage("Читы")
 getgenv().F = F
