@@ -1,0 +1,929 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+local lp = Players.LocalPlayer
+local cam = workspace.CurrentCamera
+
+local function hum() return lp.Character and lp.Character:FindFirstChildOfClass("Humanoid") end
+local function root() return lp.Character and lp.Character:FindFirstChild("HumanoidRootPart") end
+
+local function mk(class, props, parent)
+    local o = Instance.new(class)
+    for k, v in pairs(props) do o[k] = v end
+    o.Parent = parent
+    return o
+end
+
+-- ===== НАСТРОЙКИ =====
+local S = {dim = 40, walk = 60, jump = 120, fly = 60, fov = 100, gravity = 196}
+local F = {}
+local state = {}
+
+function F.speed(on) local h = hum(); if h then h.WalkSpeed = on and S.walk or 16 end end
+function F.jump(on) local h = hum(); if h then h.UseJumpPower = true; h.JumpPower = on and S.jump or 50 end end
+function F.fov(on) cam.FieldOfView = on and S.fov or 70 end
+function F.gravity(on) workspace.Gravity = on and S.gravity or 196.2 end
+
+local ncConn
+function F.noclip(on)
+    if ncConn then ncConn:Disconnect(); ncConn = nil end
+    if on then
+        ncConn = RunService.Stepped:Connect(function()
+            if lp.Character then
+                for _, p in ipairs(lp.Character:GetDescendants()) do
+                    if p:IsA("BasePart") then p.CanCollide = false end
+                end
+            end
+        end)
+    end
+end
+
+local flyConn, bv
+function F.fly(on)
+    if flyConn then flyConn:Disconnect(); flyConn = nil end
+    if bv then bv:Destroy(); bv = nil end
+    local r = root()
+    if on and r then
+        bv = mk("BodyVelocity", {MaxForce = Vector3.new(1e5, 1e5, 1e5), Velocity = Vector3.zero}, r)
+        flyConn = RunService.RenderStepped:Connect(function()
+            local h = hum()
+            if h and bv then
+                local dir = h.MoveDirection
+                local up = (h.Jump or UIS:IsKeyDown(Enum.KeyCode.Space)) and 1 or 0
+                bv.Velocity = dir * S.fly + Vector3.new(0, up * S.fly + cam.CFrame.LookVector.Y * dir.Magnitude * S.fly, 0)
+            end
+        end)
+    end
+end
+
+local ijConn
+function F.infJump(on)
+    if ijConn then ijConn:Disconnect(); ijConn = nil end
+    if on then
+        ijConn = UIS.JumpRequest:Connect(function()
+            local h = hum()
+            if h then h:ChangeState(Enum.HumanoidStateType.Jumping) end
+        end)
+    end
+end
+
+function F.esp(on)
+    state._esp = on
+    task.spawn(function()
+        while state._esp do
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= lp and p.Character and not p.Character:FindFirstChild("_esp") then
+                    mk("Highlight", {Name = "_esp", FillColor = Color3.fromRGB(190, 90, 255), FillTransparency = 0.6}, p.Character)
+                end
+            end
+            task.wait(1)
+        end
+        for _, p in ipairs(Players:GetPlayers()) do
+            local h = p.Character and p.Character:FindFirstChild("_esp")
+            if h then h:Destroy() end
+        end
+    end)
+end
+
+local oldLight
+function F.fullbright(on)
+    if on then
+        oldLight = {Lighting.Brightness, Lighting.ClockTime, Lighting.Ambient}
+        Lighting.Brightness = 2; Lighting.ClockTime = 14; Lighting.Ambient = Color3.new(1, 1, 1)
+    elseif oldLight then
+        Lighting.Brightness, Lighting.ClockTime, Lighting.Ambient = unpack(oldLight)
+    end
+end
+
+-- ===== СКИНЫ =====
+local hidden, animConn = {}, nil
+
+local function clearSkin()
+    if animConn then animConn:Disconnect(); animConn = nil end
+    local c = lp.Character
+    if c then
+        local m = c:FindFirstChild("_skin")
+        if m then m:Destroy() end
+    end
+    for obj, tr in pairs(hidden) do
+        if obj and obj.Parent then obj.Transparency = tr end
+    end
+    hidden = {}
+end
+
+-- Тунг Тунг Тунг Сахур
+local function tungSkin(on)
+    clearSkin()
+    local c, r = lp.Character, root()
+    if not (on and c and r) then return end
+
+    for _, o in ipairs(c:GetDescendants()) do
+        if (o:IsA("BasePart") and o ~= r) or o:IsA("Decal") then
+            hidden[o] = o.Transparency
+            o.Transparency = 1
+        end
+    end
+
+    local model = mk("Model", {Name = "_skin"}, c)
+    local WOOD = Color3.fromRGB(166, 112, 62)
+    local DARK = Color3.fromRGB(108, 68, 34)
+    local LIGHT = Color3.fromRGB(207, 163, 104)
+    local STICK = Color3.fromRGB(92, 60, 34)
+    local BLACK = Color3.fromRGB(15, 15, 15)
+    local WHITE = Color3.fromRGB(250, 250, 250)
+
+    local cyl, ball, blk = Enum.PartType.Cylinder, Enum.PartType.Ball, Enum.PartType.Block
+    local UP = CFrame.Angles(0, 0, math.pi / 2)
+    local WOODM, PLASTIC = Enum.Material.Wood, Enum.Material.SmoothPlastic
+
+    local function part(shape, size, cf, col, mat)
+        local p = mk("Part", {
+            Shape = shape, Size = size, Color = col, Material = mat or WOODM,
+            CanCollide = false, CanTouch = false, CanQuery = false,
+            Massless = true, Anchored = false,
+        }, model)
+        local w = mk("Weld", {Part0 = r, Part1 = p, C0 = cf}, p)
+        return w
+    end
+
+    local rig = {}
+    local function animated(shape, size, fn, col, mat)
+        local w = part(shape, size, CFrame.new(), col, mat)
+        rig[#rig + 1] = {w, fn}
+    end
+
+    part(cyl, Vector3.new(5, 2.6, 2.6), CFrame.new(0, 0.9, 0) * UP, WOOD)
+    part(cyl, Vector3.new(0.15, 2.72, 2.72), CFrame.new(0, -1.25, 0) * UP, DARK)
+    part(cyl, Vector3.new(0.15, 2.72, 2.72), CFrame.new(0, 2.5, 0) * UP, DARK)
+    part(cyl, Vector3.new(0.20, 2.50, 2.50), CFrame.new(0, 3.45, 0) * UP, LIGHT)
+    part(cyl, Vector3.new(0.24, 1.90, 1.90), CFrame.new(0, 3.45, 0) * UP, DARK)
+    part(cyl, Vector3.new(0.26, 1.60, 1.60), CFrame.new(0, 3.45, 0) * UP, LIGHT)
+    part(cyl, Vector3.new(0.28, 1.00, 1.00), CFrame.new(0, 3.45, 0) * UP, DARK)
+    part(cyl, Vector3.new(0.30, 0.50, 0.50), CFrame.new(0, 3.45, 0) * UP, LIGHT)
+
+    for _, x in ipairs({-0.5, 0.5}) do
+        part(ball, Vector3.new(1, 1, 1), CFrame.new(x, 1.75, -1.1), WHITE, PLASTIC)
+        part(ball, Vector3.new(0.45, 0.45, 0.45), CFrame.new(x * 0.9, 1.7, -1.52), BLACK, PLASTIC)
+        part(blk, Vector3.new(0.95, 0.18, 0.14),
+            CFrame.new(x, 2.4, -1.12) * CFrame.Angles(0, 0, x > 0 and -0.35 or 0.35), BLACK, PLASTIC)
+    end
+    part(blk, Vector3.new(1.25, 0.8, 0.12), CFrame.new(0, 0.55, -1.28), BLACK, PLASTIC)
+    for _, x in ipairs({-0.45, -0.15, 0.15, 0.45}) do
+        part(blk, Vector3.new(0.26, 0.32, 0.1), CFrame.new(x, 0.85, -1.33), WHITE, PLASTIC)
+    end
+
+    local ang = {r = 1, l = 0, ll = 0, rl = 0}
+    local ARM, LEG = 2.2, 1.55
+
+    local function pivotR() return CFrame.new(1.55, 1.7, 0) * CFrame.Angles(ang.r, 0, 0) end
+    local function pivotL() return CFrame.new(-1.55, 1.7, 0) * CFrame.Angles(ang.l, 0, 0) end
+    local function batBase() return pivotR() * CFrame.new(0, -ARM, 0) * CFrame.Angles(math.pi / 2, 0, 0) end
+
+    animated(cyl, Vector3.new(ARM, 0.28, 0.28), function() return pivotR() * CFrame.new(0, -ARM / 2, 0) * UP end, STICK)
+    animated(ball, Vector3.new(0.5, 0.5, 0.5), function() return pivotR() * CFrame.new(0, -ARM, 0) end, STICK)
+    animated(cyl, Vector3.new(1.2, 0.26, 0.26), function() return batBase() * UP end, LIGHT)
+    animated(cyl, Vector3.new(2.2, 0.66, 0.66), function() return batBase() * CFrame.new(0, -1.7, 0) * UP end, LIGHT)
+    animated(cyl, Vector3.new(0.12, 0.7, 0.7), function() return batBase() * CFrame.new(0, -2.8, 0) * UP end, DARK)
+
+    animated(cyl, Vector3.new(ARM, 0.28, 0.28), function() return pivotL() * CFrame.new(0, -ARM / 2, 0) * UP end, STICK)
+    animated(ball, Vector3.new(0.5, 0.5, 0.5), function() return pivotL() * CFrame.new(0, -ARM, 0) end, STICK)
+
+    for _, side in ipairs({{-0.5, "ll"}, {0.5, "rl"}}) do
+        local function pv() return CFrame.new(side[1], -1.5, 0) * CFrame.Angles(ang[side[2]], 0, 0) end
+        animated(cyl, Vector3.new(LEG, 0.3, 0.3), function() return pv() * CFrame.new(0, -LEG / 2, 0) * UP end, STICK)
+        animated(blk, Vector3.new(0.75, 0.35, 1.2), function() return pv() * CFrame.new(0, -LEG, -0.25) end, BLACK, PLASTIC)
+        animated(blk, Vector3.new(0.78, 0.12, 1.24), function() return pv() * CFrame.new(0, -LEG - 0.2, -0.25) end, WHITE, PLASTIC)
+    end
+
+    animConn = RunService.Heartbeat:Connect(function()
+        local h = hum()
+        local t = tick()
+        local moving = h and h.MoveDirection.Magnitude > 0.1
+        if moving then
+            local s = math.sin(t * 10)
+            ang.r = 0.9 + s * 0.3
+            ang.l = -s * 0.8
+            ang.ll = s * 0.7
+            ang.rl = -s * 0.7
+        else
+            ang.r = 1.0 + math.max(0, math.sin(t * 7)) * 0.6
+            ang.l, ang.ll, ang.rl = 0.05, 0, 0
+        end
+        for _, e in ipairs(rig) do e[1].C0 = e[2]() end
+    end)
+end
+
+-- ===== Остальные скины =====
+local SKIN = Color3.fromRGB(240, 200, 160)
+local WHITE, BLACK = Color3.new(1, 1, 1), Color3.fromRGB(15, 15, 15)
+local PL = Enum.Material.SmoothPlastic
+
+-- kind: s шар, b блок, c вертикальный цилиндр, z цилиндр вдоль Z, x цилиндр вдоль X
+local function newP(c, r)
+    local model = mk("Model", {Name = "_skin"}, c)
+    return function(kind, size, pos, col, rot, mat)
+        local p = mk("Part", {
+            Size = size, Color = col, Material = mat or PL, CanCollide = false,
+            CanTouch = false, CanQuery = false, Massless = true,
+        }, model)
+        rot = rot or CFrame.new()
+        if kind == "s" then mk("SpecialMesh", {MeshType = Enum.MeshType.Sphere}, p)
+        elseif kind == "c" then p.Shape = Enum.PartType.Cylinder; rot = CFrame.Angles(0, 0, math.pi / 2) * rot
+        elseif kind == "z" then p.Shape = Enum.PartType.Cylinder; rot = CFrame.Angles(0, math.pi / 2, 0) * rot
+        elseif kind == "x" then p.Shape = Enum.PartType.Cylinder end
+        local w = mk("Weld", {Part0 = r, Part1 = p, C0 = CFrame.new(pos) * rot}, p)
+        return p, w
+    end
+end
+
+local function eyes(P, y, z, dx, sz, col)
+    for _, x in ipairs({-dx, dx}) do
+        P("s", Vector3.new(sz, sz, sz), Vector3.new(x, y, z), col or WHITE)
+        P("s", Vector3.new(sz * 0.45, sz * 0.45, sz * 0.45), Vector3.new(x, y, z - sz * 0.42), BLACK)
+    end
+end
+
+local function legs(P, xs, y, len, col, shoe)
+    for _, x in ipairs(xs) do
+        P("c", Vector3.new(len, 0.45, 0.45), Vector3.new(x, y, 0), col)
+        P("b", Vector3.new(0.8, 0.4, 1.4), Vector3.new(x, y - len / 2 - 0.1, -0.3), shoe)
+    end
+end
+
+local function limb(P, L, size, pivot, off, col, ph, mat)
+    local _, w = P("b", size, pivot, col, nil, mat)
+    L[#L + 1] = {w = w, pivot = pivot, off = off, ph = ph}
+end
+
+local function swingUpdate(L)
+    return function(t, moving)
+        local s = moving and math.sin(t * 10) * 0.8 or 0
+        for _, l in ipairs(L) do
+            l.w.C0 = CFrame.new(l.pivot) * CFrame.Angles(s * l.ph, 0, 0) * CFrame.new(l.off)
+        end
+    end
+end
+
+local BUILD = {}
+
+BUILD["Тралалело Тралала"] = function(P)
+    local blue = Color3.fromRGB(70, 130, 200)
+    P("s", Vector3.new(3, 4.2, 3.6), Vector3.new(0, 1.2, 0), blue)
+    P("s", Vector3.new(2.3, 3, 1.6), Vector3.new(0, 0.9, -1.1), Color3.fromRGB(225, 235, 245))
+    P("b", Vector3.new(0.3, 1.8, 1.6), Vector3.new(0, 3.4, 0.2), blue, CFrame.Angles(0.5, 0, 0))
+    P("b", Vector3.new(0.3, 1.2, 1.4), Vector3.new(0, 1.2, 2.1), blue, CFrame.Angles(-0.6, 0, 0))
+    eyes(P, 2.3, -1.3, 0.65, 0.9)
+    P("b", Vector3.new(1.2, 0.3, 0.2), Vector3.new(0, 1.5, -1.9), BLACK)
+    legs(P, {-0.9, 0, 0.9}, -1.6, 1.5, SKIN, WHITE)
+end
+
+BUILD["Бомбардиро Крокодило"] = function(P)
+    local green, dark = Color3.fromRGB(75, 130, 60), Color3.fromRGB(55, 95, 45)
+    P("z", Vector3.new(6, 1.9, 1.9), Vector3.new(0, 0.8, 0), green)
+    P("s", Vector3.new(1.9, 1.9, 1.9), Vector3.new(0, 0.8, 3), green)
+    P("b", Vector3.new(1.3, 0.7, 2.4), Vector3.new(0, 0.7, -3.5), green)
+    P("b", Vector3.new(1.3, 0.35, 2.4), Vector3.new(0, 0.2, -3.5), dark)
+    for _, x in ipairs({-0.5, -0.15, 0.15, 0.5}) do
+        P("b", Vector3.new(0.18, 0.3, 0.2), Vector3.new(x, 0.45, -4.5), WHITE)
+    end
+    P("b", Vector3.new(5.5, 0.2, 1.8), Vector3.new(-3.4, 0.9, 0.3), dark, CFrame.Angles(0, 0.2, 0.1))
+    P("b", Vector3.new(5.5, 0.2, 1.8), Vector3.new(3.4, 0.9, 0.3), dark, CFrame.Angles(0, -0.2, -0.1))
+    P("b", Vector3.new(0.2, 1.8, 1.4), Vector3.new(0, 2, 3.4), dark)
+    P("b", Vector3.new(2.6, 0.2, 1), Vector3.new(0, 0.9, 3.5), dark)
+    P("s", Vector3.new(1.1, 1.1, 1.9), Vector3.new(0, -0.7, 0), BLACK)
+    for _, x in ipairs({-0.6, 0.6}) do
+        P("s", Vector3.new(0.7, 0.7, 0.7), Vector3.new(x, 1.8, -2.4), Color3.fromRGB(255, 220, 60))
+        P("s", Vector3.new(0.3, 0.3, 0.3), Vector3.new(x, 1.8, -2.7), BLACK)
+    end
+end
+
+BUILD["Чимпанзини Бананини"] = function(P)
+    local yel, brown, tan = Color3.fromRGB(250, 215, 60), Color3.fromRGB(110, 70, 40), Color3.fromRGB(225, 185, 140)
+    P("c", Vector3.new(4.2, 1.9, 1.9), Vector3.new(0, 0.9, 0), yel, CFrame.Angles(0, 0, 0.12))
+    P("c", Vector3.new(0.4, 0.8, 0.8), Vector3.new(-0.3, -1.3, 0), brown)
+    P("s", Vector3.new(2.3, 2.1, 2.1), Vector3.new(0, 2.6, -0.2), brown)
+    for _, x in ipairs({-1.2, 1.2}) do P("s", Vector3.new(0.9, 0.9, 0.4), Vector3.new(x, 2.8, -0.2), tan) end
+    P("s", Vector3.new(1.5, 1.3, 0.6), Vector3.new(0, 2.4, -1.05), tan)
+    eyes(P, 2.9, -1.1, 0.4, 0.55)
+    P("b", Vector3.new(0.6, 0.12, 0.1), Vector3.new(0, 2.15, -1.4), BLACK)
+    for _, x in ipairs({-1.3, 1.3}) do P("c", Vector3.new(2, 0.4, 0.4), Vector3.new(x, 0.5, 0), brown) end
+    legs(P, {-0.5, 0.5}, -1.6, 1.5, brown, BLACK)
+end
+
+BUILD["Баллерина Капучина"] = function(P)
+    local pink, cup = Color3.fromRGB(255, 170, 200), Color3.fromRGB(245, 235, 220)
+    P("c", Vector3.new(2.3, 2.3, 2.3), Vector3.new(0, 2.5, 0), cup)
+    P("c", Vector3.new(0.12, 2, 2), Vector3.new(0, 3.62, 0), Color3.fromRGB(110, 70, 40))
+    P("s", Vector3.new(1.2, 0.5, 1.2), Vector3.new(0, 3.7, 0), WHITE)
+    P("b", Vector3.new(0.35, 1.1, 0.35), Vector3.new(1.35, 2.5, 0), cup)
+    eyes(P, 2.7, -1.15, 0.5, 0.5)
+    P("b", Vector3.new(0.7, 0.12, 0.1), Vector3.new(0, 2.1, -1.15), Color3.fromRGB(200, 60, 80))
+    P("c", Vector3.new(1.5, 1.5, 1.5), Vector3.new(0, 0.7, 0), pink)
+    P("c", Vector3.new(0.25, 4, 4), Vector3.new(0, 0, 0), pink)
+    P("c", Vector3.new(0.12, 4.4, 4.4), Vector3.new(0, -0.2, 0), WHITE)
+    for _, x in ipairs({-1.2, 1.2}) do
+        P("c", Vector3.new(2, 0.35, 0.35), Vector3.new(x * 1.3, 1.9, 0), SKIN, CFrame.Angles(0, 0, x > 0 and -0.6 or 0.6))
+    end
+    legs(P, {-0.4, 0.4}, -1.6, 1.5, SKIN, pink)
+end
+
+BUILD["Лирили Ларила"] = function(P)
+    local g, dg = Color3.fromRGB(80, 160, 70), Color3.fromRGB(55, 120, 50)
+    P("c", Vector3.new(4.4, 2.7, 2.7), Vector3.new(0, 1, 0), g, nil, Enum.Material.Fabric)
+    for i = 0, 9 do
+        local a = i * 0.63
+        P("b", Vector3.new(0.12, 0.5, 0.12), Vector3.new(math.cos(a) * 1.4, 0.2 + (i % 4) * 0.7, math.sin(a) * 1.4 + 0.2), WHITE, CFrame.Angles(0, -a, 0))
+    end
+    for _, x in ipairs({-1.9, 1.9}) do P("s", Vector3.new(0.4, 3, 2.6), Vector3.new(x, 2.3, 0), dg) end
+    P("s", Vector3.new(2.2, 2, 2), Vector3.new(0, 2.8, -0.5), g)
+    P("c", Vector3.new(2.4, 0.75, 0.75), Vector3.new(0, 1.9, -1.8), g, CFrame.Angles(0.5, 0, 0))
+    for _, x in ipairs({-0.55, 0.55}) do P("c", Vector3.new(0.9, 0.18, 0.18), Vector3.new(x, 2.1, -1.6), WHITE, CFrame.Angles(0.4, 0, 0)) end
+    eyes(P, 3.1, -1.4, 0.55, 0.7)
+    legs(P, {-0.6, 0.6}, -1.6, 1.4, g, Color3.fromRGB(150, 100, 60))
+end
+
+BUILD["Амогус"] = function(P)
+    local red, dr = Color3.fromRGB(215, 30, 35), Color3.fromRGB(150, 15, 20)
+    P("c", Vector3.new(3.4, 2.7, 2.7), Vector3.new(0, 1.2, 0), red)
+    P("s", Vector3.new(2.7, 2.7, 2.7), Vector3.new(0, 2.9, 0), red)
+    P("s", Vector3.new(1.9, 1.1, 0.9), Vector3.new(0, 3, -1.15), Color3.fromRGB(150, 220, 245))
+    P("b", Vector3.new(0.8, 2.2, 1.1), Vector3.new(0, 1.2, 1.7), dr)
+    for _, x in ipairs({-0.75, 0.75}) do P("c", Vector3.new(1.6, 1.15, 1.15), Vector3.new(x, -1.2, 0), red) end
+end
+
+BUILD["Шрек"] = function(P)
+    local L = {}
+    local green, dgreen = Color3.fromRGB(150, 190, 70), Color3.fromRGB(120, 160, 55)
+    local vest, cream = Color3.fromRGB(120, 85, 50), Color3.fromRGB(235, 225, 185)
+    local pants, boot = Color3.fromRGB(100, 80, 50), Color3.fromRGB(70, 50, 30)
+
+    P("b", Vector3.new(3.3, 3.4, 1.9), Vector3.new(0, 0.9, 0), vest)
+    P("b", Vector3.new(1.4, 2.6, 0.1), Vector3.new(0, 1.2, -0.97), cream)
+    P("b", Vector3.new(0.3, 3.4, 0.12), Vector3.new(-0.75, 0.9, -0.98), vest)
+    P("b", Vector3.new(0.3, 3.4, 0.12), Vector3.new(0.75, 0.9, -0.98), vest)
+
+    P("s", Vector3.new(2.8, 2.5, 2.5), Vector3.new(0, 3.5, 0), green)
+    for _, x in ipairs({-1, 1}) do
+        P("x", Vector3.new(0.9, 0.7, 0.7), Vector3.new(x * 1.7, 3.75, 0), green, CFrame.Angles(0, 0, x * 0.45))
+        P("x", Vector3.new(0.15, 0.55, 0.55), Vector3.new(x * 2.25, 3.95, 0), Color3.fromRGB(200, 225, 120), CFrame.Angles(0, 0, x * 0.45))
+        P("b", Vector3.new(0.75, 0.2, 0.2), Vector3.new(x * 0.5, 4.1, -1.15), dgreen, CFrame.Angles(0, 0, x * -0.3))
+    end
+    eyes(P, 3.7, -1.0, 0.5, 0.6)
+    P("s", Vector3.new(0.6, 0.55, 0.55), Vector3.new(0, 3.3, -1.3), dgreen)
+    P("b", Vector3.new(1.0, 0.12, 0.1), Vector3.new(0, 2.85, -1.2), BLACK)
+    P("b", Vector3.new(0.12, 0.2, 0.1), Vector3.new(-0.55, 2.92, -1.2), BLACK)
+    P("b", Vector3.new(0.12, 0.2, 0.1), Vector3.new(0.55, 2.92, -1.2), BLACK)
+
+    for _, s in ipairs({-1, 1}) do
+        limb(P, L, Vector3.new(0.9, 2.4, 0.9), Vector3.new(s * 2.1, 2.3, 0), Vector3.new(0, -1.1, 0), green, s)
+        limb(P, L, Vector3.new(1, 0.9, 1), Vector3.new(s * 2.1, 2.3, 0), Vector3.new(0, -2.5, 0), green, s)
+        limb(P, L, Vector3.new(1.3, 2.2, 1.3), Vector3.new(s * 0.75, -0.7, 0), Vector3.new(0, -1.0, 0), pants, -s)
+        limb(P, L, Vector3.new(1.4, 0.6, 1.7), Vector3.new(s * 0.75, -0.7, 0), Vector3.new(0, -2.2, -0.2), boot, -s)
+    end
+    return swingUpdate(L)
+end
+
+BUILD["Стив"] = function(P)
+    local L = {}
+    local skin, hair = Color3.fromRGB(190, 140, 105), Color3.fromRGB(70, 45, 25)
+    local shirt, pants, shoe = Color3.fromRGB(0, 170, 170), Color3.fromRGB(55, 55, 160), Color3.fromRGB(95, 95, 95)
+
+    P("b", Vector3.new(2.4, 2.6, 1.3), Vector3.new(0, 1.1, 0), shirt)
+    P("b", Vector3.new(2.2, 2.2, 2.2), Vector3.new(0, 3.5, 0), skin)
+    P("b", Vector3.new(2.3, 0.6, 2.3), Vector3.new(0, 4.7, 0), hair)
+    P("b", Vector3.new(2.3, 1.2, 0.5), Vector3.new(0, 4.0, 0.95), hair)
+    P("b", Vector3.new(2.3, 0.5, 0.5), Vector3.new(0, 4.35, -0.95), hair)
+    for _, x in ipairs({-0.5, 0.5}) do
+        P("b", Vector3.new(0.55, 0.3, 0.1), Vector3.new(x, 3.6, -1.12), WHITE)
+        P("b", Vector3.new(0.28, 0.3, 0.12), Vector3.new(x * 0.7, 3.6, -1.14), Color3.fromRGB(60, 60, 160))
+    end
+    P("b", Vector3.new(0.45, 0.25, 0.1), Vector3.new(0, 3.2, -1.12), Color3.fromRGB(150, 100, 70))
+    P("b", Vector3.new(0.9, 0.2, 0.1), Vector3.new(0, 2.85, -1.12), Color3.fromRGB(110, 60, 45))
+
+    for _, s in ipairs({-1, 1}) do
+        limb(P, L, Vector3.new(1.1, 2.6, 1.1), Vector3.new(s * 1.75, 2.3, 0), Vector3.new(0, -1.2, 0), skin, s)
+        limb(P, L, Vector3.new(1.14, 1.0, 1.14), Vector3.new(s * 1.75, 2.3, 0), Vector3.new(0, -0.4, 0), shirt, s)
+        limb(P, L, Vector3.new(1.2, 2.5, 1.2), Vector3.new(s * 0.62, 0, 0), Vector3.new(0, -1.25, 0), pants, -s)
+        limb(P, L, Vector3.new(1.22, 0.55, 1.22), Vector3.new(s * 0.62, 0, 0), Vector3.new(0, -2.25, 0), shoe, -s)
+    end
+    return swingUpdate(L)
+end
+
+BUILD["Дракон"] = function(P)
+    local green, dg = Color3.fromRGB(60, 150, 70), Color3.fromRGB(40, 105, 50)
+    local belly, horn = Color3.fromRGB(215, 200, 120), Color3.fromRGB(235, 225, 200)
+    local wingCol = Color3.fromRGB(170, 50, 60)
+    local yellow = Color3.fromRGB(255, 220, 60)
+
+    P("z", Vector3.new(4.6, 2.2, 2.2), Vector3.new(0, 0.9, 0), green)
+    P("b", Vector3.new(1.5, 0.2, 4.2), Vector3.new(0, -0.15, 0), belly)
+    P("s", Vector3.new(1.6, 1.6, 1.8), Vector3.new(0, 1.5, -2.4), green)
+    P("s", Vector3.new(1.4, 1.4, 1.6), Vector3.new(0, 2.0, -3.0), green)
+    P("s", Vector3.new(1.9, 1.6, 2), Vector3.new(0, 2.4, -3.6), green)
+    P("b", Vector3.new(1.1, 0.8, 1.3), Vector3.new(0, 2.15, -4.5), green)
+    P("b", Vector3.new(0.9, 0.15, 1.1), Vector3.new(0, 1.7, -4.4), BLACK)
+    for _, x in ipairs({-0.3, 0.3}) do
+        P("b", Vector3.new(0.18, 0.18, 0.1), Vector3.new(x, 2.4, -5.18), BLACK)
+        P("b", Vector3.new(0.14, 0.25, 0.14), Vector3.new(x * 1.2, 1.85, -5.0), WHITE)
+    end
+    eyes(P, 2.85, -4.0, 0.65, 0.6, yellow)
+    for _, x in ipairs({-0.55, 0.55}) do
+        P("b", Vector3.new(0.25, 1.1, 0.25), Vector3.new(x, 3.35, -3.3), horn, CFrame.Angles(-0.6, 0, x > 0 and 0.25 or -0.25))
+    end
+    for i = 0, 4 do
+        P("b", Vector3.new(0.25, 0.7, 0.5), Vector3.new(0, 2.2, -1.5 + i * 0.95), dg, CFrame.Angles(0.3, 0, 0))
+    end
+    P("s", Vector3.new(1.8, 1.7, 1.8), Vector3.new(0, 0.8, 2.8), green)
+    P("s", Vector3.new(1.4, 1.3, 1.5), Vector3.new(0, 0.7, 3.9), green)
+    P("s", Vector3.new(1.0, 1.0, 1.2), Vector3.new(0, 0.8, 4.8), green)
+    P("s", Vector3.new(0.7, 0.7, 0.9), Vector3.new(0, 1.0, 5.6), dg)
+    P("b", Vector3.new(0.15, 1.1, 0.9), Vector3.new(0, 1.5, 6.1), dg, CFrame.Angles(0.5, 0, 0))
+    for _, x in ipairs({-0.9, 0.9}) do
+        for _, z in ipairs({-1.2, 1.2}) do
+            P("c", Vector3.new(2.2, 0.6, 0.6), Vector3.new(x, -1.0, z), green)
+            P("b", Vector3.new(0.9, 0.3, 1.1), Vector3.new(x, -2.2, z - 0.2), dg)
+        end
+    end
+    local wings = {}
+    for _, side in ipairs({-1, 1}) do
+        local _, w1 = P("b", Vector3.new(4.8, 0.25, 0.25), Vector3.new(side, 1.8, -0.4), dg)
+        local _, w2 = P("b", Vector3.new(4.4, 0.1, 2.8), Vector3.new(side, 1.8, -0.4), wingCol)
+        local _, w3 = P("b", Vector3.new(0.2, 0.2, 0.5), Vector3.new(side, 1.8, -0.4), horn)
+        wings[#wings + 1] = {w1, side, CFrame.new(side * 2.4, 0, 0)}
+        wings[#wings + 1] = {w2, side, CFrame.new(side * 2.4, 0, 1.5)}
+        wings[#wings + 1] = {w3, side, CFrame.new(side * 4.9, 0, 0)}
+    end
+    local pivot = Vector3.new(1, 1.8, -0.4)
+    return function(t, moving)
+        local ang = 0.35 + math.sin(t * (moving and 9 or 5)) * 0.75
+        for _, e in ipairs(wings) do
+            local s = e[2]
+            e[1].C0 = CFrame.new(s * pivot.X, pivot.Y, pivot.Z) * CFrame.Angles(0, 0, s * ang) * e[3]
+        end
+    end
+end
+
+local dragonFly = false
+function F.setSkin(name)
+    state.skinName = name
+    tungSkin(false)
+    if dragonFly and name ~= "Дракон" then
+        dragonFly = false
+        F.fly(state.fly)
+    end
+    if name == "Тунг Тунг Тунг Сахур" then tungSkin(true); return end
+    local c, r = lp.Character, root()
+    if not (name and BUILD[name] and c and r) then return end
+    for _, o in ipairs(c:GetDescendants()) do
+        if (o:IsA("BasePart") and o ~= r) or o:IsA("Decal") then
+            hidden[o] = o.Transparency
+            o.Transparency = 1
+        end
+    end
+    local upd = BUILD[name](newP(c, r))
+    if upd then
+        animConn = RunService.Heartbeat:Connect(function()
+            local h = hum()
+            upd(tick(), h and h.MoveDirection.Magnitude > 0.1)
+        end)
+    end
+    if name == "Дракон" then
+        dragonFly = true
+        F.fly(true)
+    end
+end
+
+lp.CharacterAdded:Connect(function()
+    task.wait(1)
+    if state.speed then F.speed(true) end
+    if state.jump then F.jump(true) end
+    if state.fly then F.fly(true) end
+    if state.skinName then F.setSkin(state.skinName) end
+end)
+
+-- ===== ТЕМЫ =====
+local THEMES = {
+    {"Фиолетовый", 0.76, 1}, {"Розовый", 0.90, 1}, {"Красный", 0.99, 1},
+    {"Оранжевый", 0.07, 1}, {"Жёлтый", 0.14, 1}, {"Зелёный", 0.36, 1},
+    {"Бирюзовый", 0.50, 1}, {"Голубой", 0.58, 1}, {"Синий", 0.65, 1}, {"Белый", 0, 0},
+}
+
+local function palette(h, s)
+    return {
+        bg = Color3.fromHSV(h, 0.62 * s, 0.14),
+        panel = Color3.fromHSV(h, 0.6 * s, 0.2),
+        gray = Color3.fromHSV(h, 0.55 * s, 0.4),
+        accent = Color3.fromHSV(h, 0.7 * s, 0.65),
+        active = Color3.fromHSV(h, 0.6 * s, 1),
+        text = Color3.fromHSV(h, 0.28 * s, 1),
+        g1 = Color3.fromHSV(h, 0.65 * s, 1),
+        g2 = Color3.fromHSV((h - 0.06) % 1, 0.75 * s, 1),
+        g3 = Color3.fromHSV((h + 0.06) % 1, 0.65 * s, 1),
+    }
+end
+
+local M = palette(THEMES[1][2], THEMES[1][3])
+local B = palette(THEMES[1][2], THEMES[1][3])
+
+local reg, menuGrads, btnGrads = {}, {}, {}
+
+local function themed(obj, prop, fn)
+    reg[#reg + 1] = {obj, prop, fn}
+    obj[prop] = fn()
+end
+
+local function setGrad(g, P)
+    g.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, P.g1),
+        ColorSequenceKeypoint.new(0.5, P.g2),
+        ColorSequenceKeypoint.new(1, P.g3),
+    })
+end
+
+local function refresh()
+    for _, r in ipairs(reg) do r[1][r[2]] = r[3]() end
+    for _, g in ipairs(menuGrads) do setGrad(g, M) end
+    for _, g in ipairs(btnGrads) do setGrad(g, B) end
+end
+
+-- ===== GUI =====
+local gui = mk("ScreenGui", {Name = "SNMenu", ResetOnSpawn = false}, (gethui and gethui()) or lp:WaitForChild("PlayerGui"))
+local RED = Color3.fromRGB(170, 40, 100)
+
+local function glow(stroke, list)
+    local g = mk("UIGradient", {}, stroke)
+    list[#list + 1] = g
+end
+
+local glowConn = RunService.Heartbeat:Connect(function()
+    for _, g in ipairs(menuGrads) do g.Rotation = (g.Rotation + 2) % 360 end
+    for _, g in ipairs(btnGrads) do g.Rotation = (g.Rotation + 2) % 360 end
+end)
+
+local function makeDraggable(handle, target, onTap)
+    local cur, moved, start, startPos
+    handle.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            cur, moved, start, startPos = i, false, i.Position, target.Position
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if cur and (i == cur or i.UserInputType == Enum.UserInputType.MouseMovement) then
+            local d = i.Position - start
+            if not moved and d.Magnitude > 6 then moved = true end
+            if moved then
+                target.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+            end
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if cur and (i == cur or i.UserInputType == Enum.UserInputType.MouseButton1) then
+            local wasMoved = moved
+            cur = nil
+            if not wasMoved and onTap then onTap() end
+        end
+    end)
+end
+
+local open = mk("TextButton", {
+    Size = UDim2.new(0, 46, 0, 46), Position = UDim2.new(0, 12, 0.45, 0),
+    Text = "SN", Font = Enum.Font.GothamBlack, TextSize = 16, AutoButtonColor = false, Active = true,
+}, gui)
+mk("UICorner", {CornerRadius = UDim.new(1, 0)}, open)
+themed(open, "BackgroundColor3", function() return B.bg end)
+themed(open, "TextColor3", function() return B.text end)
+glow(mk("UIStroke", {Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, open), btnGrads)
+
+local main = mk("Frame", {
+    Size = UDim2.new(0, 460, 0, 300), Position = UDim2.new(0.5, -230, 0.5, -150), Visible = false,
+}, gui)
+mk("UICorner", {CornerRadius = UDim.new(0, 12)}, main)
+themed(main, "BackgroundColor3", function() return M.bg end)
+glow(mk("UIStroke", {Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, main), menuGrads)
+
+makeDraggable(open, open, function() main.Visible = not main.Visible end)
+
+local header = mk("Frame", {Size = UDim2.new(1, -40, 0, 32), BackgroundTransparency = 1, Active = true}, main)
+local title = mk("TextLabel", {
+    Size = UDim2.new(1, -12, 1, 0), Position = UDim2.new(0, 12, 0, 0),
+    BackgroundTransparency = 1, Text = "SN Menu",
+    Font = Enum.Font.GothamBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left,
+}, header)
+themed(title, "TextColor3", function() return M.text end)
+makeDraggable(header, main)
+
+local close = mk("TextButton", {
+    Size = UDim2.new(0, 26, 0, 22), Position = UDim2.new(1, -32, 0, 5),
+    BackgroundColor3 = RED, Text = "X", TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold, TextSize = 13,
+}, main)
+mk("UICorner", {}, close)
+close.MouseButton1Click:Connect(function() main.Visible = false end)
+
+local tabBar = mk("ScrollingFrame", {
+    Size = UDim2.new(0, 96, 1, -42), Position = UDim2.new(0, 8, 0, 34),
+    BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 0,
+    AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
+}, main)
+mk("UIListLayout", {Padding = UDim.new(0, 6)}, tabBar)
+
+local pages, tabBtns, currentTab = {}, {}, nil
+local function showPage(name)
+    currentTab = name
+    for n, p in pairs(pages) do p.Visible = (n == name) end
+    refresh()
+end
+
+local function newPage(name)
+    local b = mk("TextButton", {
+        Size = UDim2.new(1, 0, 0, 34), Text = name, TextColor3 = Color3.new(1, 1, 1),
+        Font = Enum.Font.GothamBold, TextSize = 12,
+    }, tabBar)
+    mk("UICorner", {}, b)
+    themed(b, "BackgroundColor3", function() return currentTab == name and M.accent or M.gray end)
+    local p = mk("ScrollingFrame", {
+        Size = UDim2.new(1, -120, 1, -42), Position = UDim2.new(0, 112, 0, 34),
+        BorderSizePixel = 0, Visible = false, ScrollBarThickness = 3,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
+    }, main)
+    mk("UICorner", {CornerRadius = UDim.new(0, 8)}, p)
+    themed(p, "BackgroundColor3", function() return M.panel end)
+    themed(p, "ScrollBarImageColor3", function() return M.active end)
+    mk("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, p)
+    mk("UIPadding", {PaddingTop = UDim.new(0, 8), PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), PaddingBottom = UDim.new(0, 8)}, p)
+    local n = 0
+    p.ChildAdded:Connect(function(ch)
+        if ch:IsA("GuiObject") then n += 1; ch.LayoutOrder = n end
+    end)
+    pages[name], tabBtns[name] = p, b
+    b.MouseButton1Click:Connect(function() showPage(name) end)
+    return p
+end
+
+local function section(page, text)
+    local l = mk("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1, Text = text,
+        Font = Enum.Font.GothamBold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+    }, page)
+    themed(l, "TextColor3", function() return M.active end)
+end
+
+local function button(parent, text, color, fn)
+    local b = mk("TextButton", {
+        Size = UDim2.new(1, 0, 0, 32), Text = text,
+        TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 13,
+    }, parent)
+    mk("UICorner", {}, b)
+    if color then b.BackgroundColor3 = color else themed(b, "BackgroundColor3", function() return M.accent end) end
+    b.MouseButton1Click:Connect(function() fn(b) end)
+    return b
+end
+
+local function toggle(parent, name, label, fn)
+    local row = mk("Frame", {Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1}, parent)
+    mk("TextLabel", {
+        Size = UDim2.new(1, -56, 1, 0), BackgroundTransparency = 1, Text = label,
+        TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.Gotham, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, row)
+    local sw = mk("TextButton", {
+        Size = UDim2.new(0, 44, 0, 22), Position = UDim2.new(1, -44, 0.5, -11),
+        Text = "", AutoButtonColor = false,
+    }, row)
+    mk("UICorner", {CornerRadius = UDim.new(1, 0)}, sw)
+    themed(sw, "BackgroundColor3", function() return state[name] and M.active or M.gray end)
+    local knob = mk("Frame", {
+        Size = UDim2.new(0, 16, 0, 16),
+        Position = state[name] and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+    }, sw)
+    mk("UICorner", {CornerRadius = UDim.new(1, 0)}, knob)
+
+    sw.MouseButton1Click:Connect(function()
+        state[name] = not state[name]
+        fn(state[name])
+        local on = state[name]
+        TweenService:Create(sw, TweenInfo.new(0.15), {BackgroundColor3 = on and M.active or M.gray}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.15), {Position = on and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)}):Play()
+    end)
+end
+
+local function slider(page, label, min, max, key, onChange)
+    local box = mk("Frame", {Size = UDim2.new(1, 0, 0, 46), BackgroundTransparency = 1}, page)
+    mk("TextLabel", {
+        Size = UDim2.new(1, -70, 0, 20), BackgroundTransparency = 1, Text = label,
+        TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.Gotham, TextSize = 13,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, box)
+    local input = mk("TextBox", {
+        Size = UDim2.new(0, 60, 0, 20), Position = UDim2.new(1, -60, 0, 0),
+        BackgroundTransparency = 1, Font = Enum.Font.Gotham,
+        TextSize = 13, TextXAlignment = Enum.TextXAlignment.Right, ClearTextOnFocus = true,
+    }, box)
+    themed(input, "TextColor3", function() return M.text end)
+
+    local hit = mk("Frame", {Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 0, 22), BackgroundTransparency = 1, Active = true}, box)
+    local track = mk("Frame", {Size = UDim2.new(1, 0, 0, 6), Position = UDim2.new(0, 0, 0.5, -3), BorderSizePixel = 0}, hit)
+    mk("UICorner", {CornerRadius = UDim.new(1, 0)}, track)
+    themed(track, "BackgroundColor3", function() return M.gray end)
+    local fill = mk("Frame", {Size = UDim2.new(0, 0, 1, 0), BorderSizePixel = 0}, track)
+    mk("UICorner", {CornerRadius = UDim.new(1, 0)}, fill)
+    themed(fill, "BackgroundColor3", function() return M.active end)
+
+    local function set(v, fromText)
+        v = math.floor(v + 0.5)
+        if not fromText then v = math.clamp(v, min, max) end
+        v = math.max(v, 0)
+        S[key] = v
+        fill.Size = UDim2.new(math.clamp((v - min) / (max - min), 0, 1), 0, 1, 0)
+        input.Text = tostring(v)
+        if onChange then onChange(v) end
+    end
+
+    local drag = false
+    local function fromInput(i)
+        local a = math.clamp((i.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        set(min + (max - min) * a)
+    end
+    hit.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            drag = true
+            page.ScrollingEnabled = false
+            fromInput(i)
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            fromInput(i)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if drag and (i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch) then
+            drag = false
+            page.ScrollingEnabled = true
+        end
+    end)
+    input.FocusLost:Connect(function()
+        local n = tonumber(input.Text)
+        if n then set(n, true) else input.Text = tostring(S[key]) end
+    end)
+
+    set(S[key])
+end
+
+local function swatches(page, onPick)
+    local grid = mk("Frame", {Size = UDim2.new(1, 0, 0, 72), BackgroundTransparency = 1}, page)
+    mk("UIGridLayout", {
+        CellSize = UDim2.new(0, 28, 0, 28), CellPadding = UDim2.new(0, 8, 0, 8),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+    }, grid)
+    for i, t in ipairs(THEMES) do
+        local b = mk("TextButton", {
+            Text = "", AutoButtonColor = true, LayoutOrder = i,
+            BackgroundColor3 = Color3.fromHSV(t[2], 0.7 * t[3], 1),
+        }, grid)
+        mk("UICorner", {CornerRadius = UDim.new(1, 0)}, b)
+        b.MouseButton1Click:Connect(function() onPick(palette(t[2], t[3])) end)
+    end
+end
+
+-- ===== Читы =====
+local cheats = newPage("Читы")
+toggle(cheats, "fly", "Полёт (Fly)", F.fly)
+slider(cheats, "Скорость полёта", 10, 500, "fly")
+toggle(cheats, "speed", "Спидхак (SpeedHack)", F.speed)
+slider(cheats, "Значение бега", 16, 300, "walk", function() if state.speed then F.speed(true) end end)
+toggle(cheats, "jump", "Супер прыжок (JumpPower)", F.jump)
+slider(cheats, "Высота прыжка", 50, 500, "jump", function() if state.jump then F.jump(true) end end)
+toggle(cheats, "ij", "Бесконечный прыжок", F.infJump)
+toggle(cheats, "noclip", "Noclip", F.noclip)
+toggle(cheats, "gravity", "Гравитация", F.gravity)
+slider(cheats, "Значение гравитации", 0, 400, "gravity", function() if state.gravity then F.gravity(true) end end)
+
+-- ===== Визуалы =====
+local vis = newPage("Визуалы")
+toggle(vis, "esp", "ESP (подсветка)", F.esp)
+toggle(vis, "fb", "Fullbright", F.fullbright)
+toggle(vis, "fov", "FOV", F.fov)
+slider(vis, "Дальность FOV", 30, 120, "fov", function() if state.fov then F.fov(true) end end)
+
+-- ===== ТП =====
+local tp = newPage("ТП")
+local cpCount = 0
+button(tp, "+ Add checkpoint", nil, function()
+    local r = root(); if not r then return end
+    cpCount += 1
+    local cf = r.CFrame
+    local row = mk("Frame", {Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1}, tp)
+    local go = mk("TextButton", {
+        Size = UDim2.new(1, -40, 1, 0), Text = "CP" .. cpCount,
+        TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 13,
+    }, row)
+    mk("UICorner", {}, go)
+    themed(go, "BackgroundColor3", function() return M.gray end)
+    local del = mk("TextButton", {
+        Size = UDim2.new(0, 34, 1, 0), Position = UDim2.new(1, -34, 0, 0), BackgroundColor3 = RED,
+        Text = "🗑", TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 13,
+    }, row)
+    mk("UICorner", {}, del)
+    go.MouseButton1Click:Connect(function()
+        local rr = root(); if rr then rr.CFrame = cf + Vector3.new(0, 3, 0) end
+    end)
+    del.MouseButton1Click:Connect(function() row:Destroy() end)
+end)
+
+-- ===== Скины =====
+local skins = newPage("Скины")
+local skinNames = {
+    "Тунг Тунг Тунг Сахур", "Шрек", "Стив", "Дракон",
+    "Тралалело Тралала", "Бомбардиро Крокодило", "Чимпанзини Бананини",
+    "Баллерина Капучина", "Лирили Ларила", "Амогус",
+}
+for _, nm in ipairs(skinNames) do
+    local b = button(skins, nm, nil, function() F.setSkin(nm); refresh() end)
+    themed(b, "BackgroundColor3", function() return state.skinName == nm and M.active or M.gray end)
+end
+button(skins, "Снять скин", RED, function() F.setSkin(nil); refresh() end)
+
+-- ===== Настройки =====
+local set = newPage("Настройки")
+section(set, "Цвет меню")
+swatches(set, function(p) M = p; refresh() end)
+section(set, "Цвет кнопки")
+swatches(set, function(p) B = p; refresh() end)
+
+section(set, "Обои")
+
+local wall = mk("ImageLabel", {
+    Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+    ScaleType = Enum.ScaleType.Crop, ZIndex = 0, Visible = false,
+    ImageTransparency = S.dim / 100,
+}, main)
+mk("UICorner", {CornerRadius = UDim.new(0, 12)}, wall)
+
+local function applyWall()
+    local on = state.wall and wall.Image ~= ""
+    wall.Visible = on and true or false
+    for _, p in pairs(pages) do p.BackgroundTransparency = on and 0.5 or 0 end
+end
+
+local function loadWall(txt)
+    txt = (txt:gsub("%s", ""))
+    if txt:match("roblox%.com") then
+        local id = txt:match("(%d%d%d%d+)")
+        if id then txt = id end
+    end
+    if txt:match("^https?://") then
+        local ok = pcall(function()
+            writefile("sn_wall.png", game:HttpGet(txt))
+            wall.Image = getcustomasset("sn_wall.png")
+        end)
+        return ok
+    elseif tonumber(txt) then
+        wall.Image = "rbxassetid://" .. txt
+        return true
+    end
+    return false
+end
+
+-- Обои по умолчанию (ID картинки или прямая ссылка)
+local DEFAULT_WALL = "84478185397451"
+if DEFAULT_WALL ~= "" and loadWall(DEFAULT_WALL) then
+    state.wall = true
+    applyWall()
+end
+
+toggle(set, "wall", "Обои", function() applyWall() end)
+
+local wbox = mk("TextBox", {
+    Size = UDim2.new(1, 0, 0, 32), Text = "", PlaceholderText = "ID картинки или ссылка",
+    TextColor3 = Color3.new(1, 1, 1), PlaceholderColor3 = Color3.fromRGB(170, 170, 170),
+    Font = Enum.Font.Gotham, TextSize = 12, ClearTextOnFocus = false, TextTruncate = Enum.TextTruncate.AtEnd,
+}, set)
+mk("UICorner", {}, wbox)
+themed(wbox, "BackgroundColor3", function() return M.gray end)
+wbox.FocusLost:Connect(function()
+    if wbox.Text == "" then return end
+    if loadWall(wbox.Text) then
+        state.wall = true
+        applyWall()
+    else
+        wbox.Text = ""
+        wbox.PlaceholderText = "Не вышло, проверь ID или ссылку"
+    end
+end)
+
+slider(set, "Прозрачность обоев", 0, 90, "dim", function(v) wall.ImageTransparency = v / 100 end)
+
+button(set, "Выгрузить скрипт", RED, function()
+    F.setSkin(nil)
+    F.fly(false); F.noclip(false); F.speed(false); F.jump(false); F.infJump(false)
+    F.fov(false); F.gravity(false); F.esp(false); F.fullbright(false)
+    glowConn:Disconnect()
+    gui:Destroy()
+end)
+
+showPage("Читы")
+getgenv().F = F
